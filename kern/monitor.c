@@ -24,6 +24,7 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{ "backtrace", "Display a backtrace", mon_backtrace }
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -57,7 +58,63 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
-	// Your code here.
+	/*
+	*	Prolog
+	*
+	*	push ebp
+	*	mov sp, ebp
+	*/
+	
+	/*
+	*	Stack layout after prolog
+	*	
+	*	0xNN	old old bp 	<- old bp
+	*	...
+	*   0x10	tf			<- bottom
+	*   0x0C	argv
+	*  	0x08	argc
+	*   0x04	ret addr
+	*	0x00	old bp		<- Top == sp == bp
+	*/
+	
+	uint32_t* bp;
+	uint32_t ip;
+	int ret;
+	struct Eipdebuginfo dbg_info;
+
+	// Get initial Base Pointer
+	bp = (uint32_t*)read_ebp();
+
+	cprintf("Stack backtrace\n");
+
+	// Travers stack frame
+	while( 0 != bp )
+		{
+		ip = *(bp + 1);
+
+		ret = debuginfo_eip( ip, &dbg_info );
+
+		cprintf( "\tebp %08x  eip %08x args %08x %08x %08x %08x %08x\n", 
+			bp, 
+			ip, 
+			*(bp + 2), 	// Arg1
+			*(bp + 3),	// Arg2
+			*(bp + 4),	// Arg3
+			*(bp + 5),	// Arg4
+			*(bp + 6) 	// Arg5
+			);
+
+		cprintf( "\t\t%s:%u: %.*s+%u\n", 
+			dbg_info.eip_file, 
+			dbg_info.eip_line,
+			dbg_info.eip_fn_namelen,
+			dbg_info.eip_fn_name,
+			ip - dbg_info.eip_fn_addr // offset from function entry point
+			);
+		
+		bp = (uint32_t*)*bp; // Move down one stack frame
+		}
+
 	return 0;
 }
 
